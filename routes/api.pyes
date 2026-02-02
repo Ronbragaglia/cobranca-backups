@@ -1,0 +1,47 @@
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
+use App\Models\User;
+
+// DEBUG (temporário): ver o body que o Laravel está recebendo
+Route::post('/debug-body', function (Request $request) {
+    return response()->json([
+        'content_type' => $request->header('Content-Type'),
+        'raw'          => $request->getContent(),
+        'all'          => $request->all(),
+        'json'         => $request->json()->all(),
+    ]);
+});
+
+Route::get('/status', function () {
+    return ['ok' => true];
+});
+
+Route::post('/login', function (Request $request) {
+    $request->validate([
+        'email'    => ['required', 'email'],
+        'password' => ['required'],
+    ]);
+
+    $user = User::where('email', $request->email)->first();
+
+    if (! $user || ! Hash::check($request->password, $user->password)) {
+        return response()->json(['message' => 'Credenciais inválidas'], 401);
+    }
+
+    return ['token' => $user->createToken('api')->plainTextToken];
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
+
+    Route::post('/logout', function (Request $request) {
+        $request->user()->currentAccessToken()->delete();
+        return response()->json(['message' => 'Logout ok']);
+    });
+
+    Route::apiResource('cobrancas', \App\Http\Controllers\CobrancaController::class);

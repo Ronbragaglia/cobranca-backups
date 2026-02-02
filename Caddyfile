@@ -1,0 +1,73 @@
+# Caddyfile para cobranca-api
+# Domínio: cobrancaauto.com.br
+# PRODUÇÃO: HTTPS com Let's Encrypt automático
+
+cobrancaauto.com.br {
+    root * /var/www/public
+    php_fastcgi cobranca_app:9000
+    encode gzip
+    file_server
+
+    # Configurações adicionais para segurança
+    header {
+        # HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # Outros headers de segurança
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Logs
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+}
+
+# Configuração adicional para subdomínios (se necessário)
+# app.cobrancaauto.com.br {
+#     root * /var/www/public
+#     php_fastcgi cobranca_app:9000
+#     encode gzip
+#     file_server
+#
+#     # Configurações adicionais para segurança
+#     header {
+#         # HSTS
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+#         # Outros headers de segurança
+#         X-Frame-Options "SAMEORIGIN"
+#         X-Content-Type-Options "nosniff"
+#         Referrer-Policy "strict-origin-when-cross-origin"
+#     }
+#
+#     # Logs
+#     log {
+#         output file /var/log/caddy/access.log
+#         format json
+#     }
+# }
+#
+# api.cobrancaauto.com.br {
+#     root * /var/www/public
+#     php_fastcgi cobranca_app:9000
+#     encode gzip
+#     file_server
+#
+#     # Configurações adicionais para segurança
+#     header {
+#         # HSTS
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+#         # Outros headers de segurança
+#         X-Frame-Options "SAMEORIGIN"
+#         X-Content-Type-Options "nosniff"
+#         Referrer-Policy "strict-origin-when-cross-origin"
+#     }
+#
+#     # Logs
+#     log {
+#         output file /var/log/caddy/access.log
+#         format json
+#     }
+# }

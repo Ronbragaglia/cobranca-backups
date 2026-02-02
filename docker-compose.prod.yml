@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: cobranca_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: cobranca
+      MYSQL_USER: cobranca_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - cobranca_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: cobranca_app
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      APP_KEY: ${APP_KEY}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: cobranca
+      DB_USERNAME: cobranca_user
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: database
+    volumes:
+      - ./storage:/var/www/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - cobranca_network
+
+  nginx-laravel:
+    image: nginx:alpine
+    container_name: nginx-laravel
+    restart: unless-stopped
+    volumes:
+      - ./:/var/www
+      - ./nginx-laravel.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - cobranca_network
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cobranca.rule=Host(`cobrancaauto.com.br`) || Host(`www.cobrancaauto.com.br`) || Host(`app.cobrancaauto.com.br`) || Host(`api.cobrancaauto.com.br`)"
+      - "traefik.http.routers.cobranca.entrypoints=websecure"
+      - "traefik.http.routers.cobranca.tls.certresolver=cloudflare"
+      - "traefik.http.routers.cobranca.tls=true"
+      - "traefik.http.services.cobranca.loadbalancer.server.port=80"
+
+  queue:
+    build: .
+    container_name: cobranca_queue
+    restart: unless-stopped
+    command: php artisan queue:work --verbose --tries=3 --timeout=90
+    environment:
+      APP_ENV: production
+      APP_KEY: ${APP_KEY}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: cobranca
+      DB_USERNAME: cobranca_user
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: database
+    depends_on:
+      - app
+    networks:
+      - cobranca_network
+
+  scheduler:
+    build: .
+    container_name: cobranca_scheduler
+    restart: unless-stopped
+    command: sh -c "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    environment:
+      APP_ENV: production
+      APP_KEY: ${APP_KEY}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: cobranca
+      DB_USERNAME: cobranca_user
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: database
+    depends_on:
+      - app
+    networks:
+      - cobranca_network
+
+  backup:
+    build: .
+    container_name: cobranca_backup
+    restart: unless-stopped
+    command: sh -c "while true; do /var/www/scripts/backup.sh; sleep 86400; done"
+    volumes:
+      - backups:/backups
+    depends_on:
+      - mysql
+    networks:
+      - cobranca_network
+
+volumes:
+  mysql_data:
+  backups:
+
+networks:
+  cobranca_network:
+    driver: bridge
+  traefik-network:
+    external: true

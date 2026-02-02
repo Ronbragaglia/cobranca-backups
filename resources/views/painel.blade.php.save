@@ -1,0 +1,286 @@
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Dashboard ADMIN - SaaS Faturamento') }}
+        </h2>
+    </x-slot>
+
+    @if(session('success'))
+    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+        {{ session('success') }}
+    </div>
+    @endif
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <!-- Métricas Principais -->
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
+                <div class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                        <!-- MRR -->
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold text-blue-800">MRR</h3>
+                            <p class="text-2xl font-bold text-blue-600">R$ {{ number_format($mrr, 2, ',', '.') }}</p>
+                        </div>
+                        <!-- Crescimento -->
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold text-green-800">Crescimento</h3>
+                            <p class="text-2xl font-bold text-green-600">{{ number_format($crescimento, 1) }}%</p>
+                        </div>
+                        <!-- Churn Rate -->
+                        <div class="bg-red-50 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold text-red-800">Churn Rate</h3>
+                            <p class="text-2xl font-bold text-red-600">{{ number_format($churn_rate, 1) }}%</p>
+                        </div>
+                        <!-- Total Tenants -->
+                        <div class="bg-purple-50 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold text-purple-800">Total Tenants</h3>
+                            <p class="text-2xl font-bold text-purple-600">{{ $tenants->count() }}</p>
+                        </div>
+                    </div>
+                    <!-- Gráfico de Crescimento -->
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold mb-4">Crescimento Mensal (Últimos 6 meses)</h3>
+                        <canvas id="crescimentoChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de Tenants -->
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold mb-4">Tenants</h3>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subdomínio</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Stripe</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Receita Total</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach($tenants as $tenant)
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ $tenant->name }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $tenant->subdomain }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                        @if($tenant->subscription_status == 'active') bg-green-100 text-green-800
+                                        @elseif($tenant->subscription_status == 'inactive') bg-red-100 text-red-800
+                                        @else bg-yellow-100 text-yellow-800 @endif">
+                                        {{ ucfirst($tenant->subscription_status ?? 'unknown') }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    R$ {{ number_format($tenant->cobrancas->where('status', 'pago')->sum('valor'), 2, ',', '.') }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <form method="POST" action="{{ route('painel.toggle-tenant', $tenant) }}" class="inline">
+                                                                              @method('PATCH')
+                                        <button type="submit" class="text-indigo-600 hover:text-indigo-900">
+                                            @if($tenant->subscription_status == 'active')
+                                                Desativar
+                                            @else
+                                                Ativar
+                                            @endif
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('crescimentoChart').getContext('2d');
+            const crescimentoData = @json($crescimento_data);
+            const labels = crescimentoData.map(item => item.month);
+            const data = crescimentoData.map(item => item.revenue);
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Receita Mensal',
+                        data: data,
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderWidth: 2,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return 'R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Receita: R$ ' + context.parsed.y.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</x-app-layout>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach($cobrancas as $cobranca)
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ $cobranca->id }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $cobranca->descricao }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R$ {{ number_format($cobranca->valor, 2, ',', '.') }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $cobranca->status }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $cobranca->created_at->format('d/m/Y H:i') }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <button onclick="openEditModal({{ $cobranca->id }}, '{{ addslashes($cobranca->descricao) }}', {{ $cobranca->valor }}, '{{ $cobranca->status }}')" class="text-blue-600 hover:text-blue-900">✏️ Editar</button>
+                                    <form method="POST" action="{{ route('painel.cobrancas.destroy', $cobranca) }}" class="inline" onsubmit="return confirm('Tem certeza que deseja excluir?')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-red-600 hover:text-red-900 ml-2">🗑️ Excluir</button>
+                                    </form>
+                                    <button onclick="sendWhatsapp({{ $cobranca->id }})" class="text-green-600 hover:text-green-900 ml-2">📱 WhatsApp</button>
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    <div class="mt-4">
+                        {{ $cobrancas->links() }}
+                    </div>
+                </div>
+            </div>
+
+            <x-modal name="edit-cobranca" :show="false">
+                <div class="p-6">
+                    <h2 class="text-lg font-medium text-gray-900">Editar Cobrança</h2>
+                    <form id="edit-form" method="POST" class="mt-4">
+                        @csrf
+                        @method('PUT')
+                        <div>
+                            <label for="edit-descricao" class="block text-sm font-medium text-gray-700">Descrição</label>
+                            <input type="text" id="edit-descricao" name="descricao" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required>
+                        </div>
+                        <div class="mt-4">
+                            <label for="edit-valor" class="block text-sm font-medium text-gray-700">Valor</label>
+                            <input type="number" step="0.01" id="edit-valor" name="valor" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required>
+                        </div>
+                        <div class="mt-4">
+                            <label for="edit-status" class="block text-sm font-medium text-gray-700">Status</label>
+                            <select id="edit-status" name="status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required>
+                                <option value="pendente">Pendente</option>
+                                <option value="pago">Pago</option>
+                            </select>
+                        </div>
+                        <div class="mt-6 flex justify-end">
+                            <button type="button" onclick="$dispatch('close-modal', { detail: 'edit-cobranca' })" class="mr-3 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Cancelar</button>
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </x-modal>
+        </div>
+    </div>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('statusChart').getContext('2d');
+            const statusData = @json($status_counts);
+            const labels = Object.keys(statusData);
+            const data = Object.values(statusData);
+
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.6)',
+                            'rgba(54, 162, 235, 0.6)',
+                            'rgba(255, 205, 86, 0.6)',
+                            'rgba(75, 192, 192, 0.6)',
+                            'rgba(153, 102, 255, 0.6)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 205, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + context.parsed;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+         });
+
+         function openEditModal(id, descricao, valor, status) {
+             document.getElementById('edit-descricao').value = descricao;
+             document.getElementById('edit-valor').value = valor;
+             document.getElementById('edit-status').value = status;
+             document.getElementById('edit-form').action = '/painel/cobrancas/' + id;
+             $dispatch('open-modal', { detail: 'edit-cobranca' });
+         }
+
+         function sendWhatsapp(id) {
+             fetch('/api/whatsapp', {
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json',
+                     'Accept': 'application/json',
+                     'X-Requested-With': 'XMLHttpRequest'
+                 },
+                 credentials: 'include',
+                 body: JSON.stringify({ cobranca_id: id })
+             }).then(response => response.json()).then(data => {
+                 alert(data.message);
+             }).catch(error => {
+                 alert('Erro ao enviar mensagem.');
+             });
+         }
+     </script>
+ </x-app-layout>

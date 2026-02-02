@@ -1,0 +1,148 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║              CONTINUAR DEPLOY VPS - INSTRUÇÕES RÁPIDAS                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+DATA: 2026-01-31
+STATUS: BLOQUEADO - Precisa configurar chave SSH na VPS
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 RESUMO RÁPIDO
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Feito:
+  - Lido INSTRUCOES_FINAIS_DEPLOY.txt
+  - Verificado que chaves SSH existem
+  - Criado script deploy-vps-auto-chave.sh
+  - Criado relatório RELATORIO_PROGRESSO_DEPLOY_VPS.md
+
+❌ Pendente:
+  - Configurar chave SSH na VPS (bloqueado por falta de automação)
+  - Executar deploy completo
+  - Validar containers e portas
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 PASSO A PASSO PARA CONTINUAR (RECOMENDADO)
+═══════════════════════════════════════════════════════════════════════════════
+
+PASSO 1: Configurar Chave SSH na VPS (MANUAL)
+────────────────────────────────────────────────────────────────────────────────────
+
+Abra o terminal e execute:
+
+ssh root@76.13.167.54 "mkdir -p /root/.ssh && echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDEOcC7bXcpN9NszSVCnHmmrXktf2yyALI+VGnMd6eGgmaA9uBz3KhR838HqcatX7YNPp40tHPhooxys71mfVaRA6DmrHcgwwAF9Hm0L7GM7HHW90vWI11+wzonebj8R17+rVWbg2VBgSI5wNiHmaYxRvVf/hBgJ4hOmUpC9OSi46btTbwRHekY2AO7hqBHqGh6m7xoy0Bx/Leuq40EvlCoiOnkE6aklHnILPI4gqmkDoNN33cacTBnMnb1gSc14yd9xQh3n8wP7LtG7JKD/BQgwMLLHTEcaS1/rg/turPNhcKrRV/ZSjb+P1Tzc06yO7FQUHGwIimq1FHyRJETiN81Wt3XNsoUqF9oD2YJMmQCo2mptBbvVa8HodMyE0zVl3/WQzvZt3k+NVIZoIw0Kn6tRbfiSNRjkHBOfrf20UvB7yAlWotf9/c1x43B8z0lhgWJtF4AHSX1Sh8i+ilTlMcDCLh2SXZCatdDm+n0G7qG4N/Nz1GW9SAZ8Heh2eD11g6jNTJaGufWJGRoOZ77bNJJzkASZOpmhJUE4dS/tShZY9cG+ncBzYwdrVa3l3N4zcCGMFcHkRDFZZLsPOTuZ5TsuiKuqAqh3o+SFyqNwZs2acyh34We+CkzuqBU/JFIeaBYk1hV/cAFAQkxops4RiYmMWShXu/N5EauHfj/YKlnyw== cobranca-auto-deploy' >> /root/.ssh/authorized_keys && chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys && systemctl restart ssh && echo '✓ Chave SSH configurada!' && exit"
+
+⚠️  Quando pedir senha, digite: 1Qaz2wsx@2026
+
+
+PASSO 2: Testar SSH sem Senha
+────────────────────────────────────────────────────────────────────────────────────
+
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "echo '✓ SSH sem senha funcionando!' && exit"
+
+✅ Se entrar SEM pedir senha, está configurado corretamente!
+
+
+PASSO 3: Executar Deploy Automático
+────────────────────────────────────────────────────────────────────────────────────
+
+./scripts/deploy-vps-auto-chave.sh
+
+⚠️  Este comando pode levar 10-15 minutos (build das imagens Docker)
+
+
+PASSO 4: Validar Deploy
+────────────────────────────────────────────────────────────────────────────────────
+
+# Ver containers (deve mostrar 6 containers UP)
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "docker ps"
+
+# Testar porta 8000 (Laravel)
+curl -I http://76.13.167.54:8000
+
+# Testar porta 8080 (phpMyAdmin)
+curl -I http://76.13.167.54:8080
+
+# Ver logs do container web
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "docker logs cobranca_web --tail=20"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📁 ARQUIVOS CRIADOS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. RELATORIO_PROGRESSO_DEPLOY_VPS.md - Relatório completo do progresso
+2. scripts/deploy-vps-auto-chave.sh - Script de deploy com chave SSH
+3. CONTINUAR_DEPLOY_AMANHA.txt - Este arquivo
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🌐 ACESSO APÓS DEPLOY
+═══════════════════════════════════════════════════════════════════════════════
+
+Laravel:        http://76.13.167.54:8000
+phpMyAdmin:     http://76.13.167.54:8080
+  Usuário: root
+  Senha: root
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 CHECKLIST DE VALIDAÇÃO
+═══════════════════════════════════════════════════════════════════════════════
+
+Após executar o deploy, verifique:
+
+[ ] PASSO 1: Chave SSH configurada (comando executado com sucesso)
+[ ] PASSO 2: SSH sem senha funcionando (entrou sem pedir senha)
+[ ] PASSO 3: Deploy automático concluído (script rodou até o fim)
+[ ] PASSO 4: docker ps mostra 6 containers UP:
+    - cobranca_app (Laravel PHP-FPM)
+    - cobranca_web (Nginx - porta 8000)
+    - cobranca_mysql (MySQL 8.0)
+    - cobranca_phpmyadmin (porta 8080)
+    - cobranca_queue (Laravel Queue Worker)
+    - cobranca_scheduler (Laravel Cron)
+[ ] PASSO 4: curl http://76.13.167.54:8000 responde HTTP 200 ou 302
+[ ] PASSO 4: curl http://76.13.167.54:8080 responde HTTP 200
+[ ] PASSO 4: Logs do app mostram "Server started on port 9000"
+[ ] PASSO 4: Logs do mysql mostram "ready for connections"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔧 COMANDOS ÚTEIS DE MONITORAMENTO
+═══════════════════════════════════════════════════════════════════════════════
+
+# Ver status dos containers
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "cd /var/www/cobranca-auto && docker-compose -f docker-compose.dev.yml ps"
+
+# Ver logs em tempo real
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "cd /var/www/cobranca-auto && docker-compose -f docker-compose.dev.yml logs -f app"
+
+# Ver uso de recursos
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "docker stats"
+
+# Reiniciar serviço específico
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "cd /var/www/cobranca-auto && docker-compose -f docker-compose.dev.yml restart app"
+
+# Parar tudo
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "cd /var/www/cobranca-auto && docker-compose -f docker-compose.dev.yml down"
+
+# Remover tudo (containers, volumes, imagens)
+ssh -i ~/.ssh/cobranca_deploy root@76.13.167.54 "cd /var/www/cobranca-auto && docker-compose -f docker-compose.dev.yml down -v --rmi all"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📝 NOTAS IMPORTANTES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. O deploy pode levar 10-15 minutos devido ao build das imagens Docker
+2. Certifique-se de ter pelo menos 2GB de espaço livre na VPS
+3. O firewall será configurado automaticamente (portas 80, 8080, 22)
+4. O MySQL será inicializado com usuário root e senha root
+5. O phpMyAdmin estará acessível na porta 8080
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Gerado em: 2026-01-31 02:57 UTC-3
+Versão: 1.0
