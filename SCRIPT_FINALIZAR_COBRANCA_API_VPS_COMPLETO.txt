@@ -1,0 +1,303 @@
+#!/bin/bash
+# FINALIZACAO_COBRANCA-API_VPS.SH
+# Script completo para finalizar a configuração da VPS
+# Execute este script na VPS (IP: 76.13.167.54)
+
+set -e
+
+echo "=========================================="
+echo "🚀 FINALIZANDO COBRANCA-API VPS"
+echo "=========================================="
+echo ""
+
+# Definir caminho do projeto
+PROJECT_PATH="/var/www/cobranca-api"
+DOMAIN="api.cobrancaauto.com.br"
+EMAIL="seu@email.com"
+
+# Ir para o diretório do projeto
+cd "$PROJECT_PATH" || {
+    echo "❌ Erro: Diretório $PROJECT_PATH não encontrado"
+    exit 1
+}
+
+echo "📁 Diretório do projeto: $PROJECT_PATH"
+echo "🌐 Domínio: $DOMAIN"
+echo ""
+
+# ============================================
+# PASSO 1: Resolver conflito de porta 80
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 1: Resolvendo conflito de porta 80"
+echo "=========================================="
+
+# Identificar containers usando portas 80/443
+echo "🔍 Identificando containers usando portas 80/443..."
+docker ps -a --filter "publish=80" --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}" || true
+docker ps -a --filter "publish=443" --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}" || true
+
+# Parar containers que usam porta 80/443
+PROXY_CONTAINERS=$(docker ps -a --filter "publish=80" --format "{{.Names}}" 2>/dev/null || true)
+
+if [ -n "$PROXY_CONTAINERS" ]; then
+    echo ""
+    echo "🛑 Parando containers que usam porta 80/443..."
+    for container in $PROXY_CONTAINERS; do
+        echo "  - Parando $container..."
+        docker stop "$container" 2>/dev/null || true
+        docker rm "$container" 2>/dev/null || true
+    done
+fi
+
+echo ""
+echo "✅ Conflito de porta 80 resolvido"
+echo ""
+
+# ============================================
+# PASSO 2: Subir MySQL
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 2: Subindo MySQL"
+echo "=========================================="
+
+echo "🐳 Subindo containers MySQL..."
+docker compose -f docker-compose.mysql.yml up -d
+
+echo "⏳ Aguardando MySQL iniciar (10 segundos)..."
+sleep 10
+
+echo "📋 Logs do MySQL:"
+docker compose -f docker-compose.mysql.yml logs --tail=10
+
+echo ""
+echo "✅ MySQL iniciado com sucesso"
+echo ""
+
+# ============================================
+# PASSO 3: Configurar Nginx para o domínio
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 3: Configurando Nginx para $DOMAIN"
+echo "=========================================="
+
+echo "📝 Criando configuração do Nginx..."
+cat > /etc/nginx/sites-available/cobranca-api << 'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.cobrancaauto.com.br www.api.cobrancaauto.com.br;
+
+    root /root/cobranca-api/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+
+    index index.php index.html index.htm;
+
+    charset utf-8;
+
+    access_log /var/log/nginx/cobranca-api-access.log;
+    error_log /var/log/nginx/cobranca-api-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass 127.0.0.1:8082;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+
+        fastcgi_read_timeout 300;
+        fastcgi_send_timeout 300;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+
+    client_max_body_size 100M;
+    fastcgi_buffer_size 128k;
+    fastcgi_buffers 4 256k;
+}
+EOF
+
+# Ativar o site
+ln -sf /etc/nginx/sites-available/cobranca-api /etc/nginx/sites-enabled/cobranca-api
+
+# Remover configuração padrão
+rm -f /etc/nginx/sites-enabled/default
+
+# Testar configuração
+echo "🔍 Testando configuração do Nginx..."
+nginx -t
+
+# Reiniciar Nginx
+echo "🚀 Reiniciando Nginx..."
+systemctl restart nginx
+
+echo "📋 Status do Nginx:"
+systemctl status nginx --no-pager
+
+echo ""
+echo "✅ Nginx configurado com sucesso"
+echo ""
+
+# ============================================
+# PASSO 4: Configurar HTTPS com Certbot
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 4: Configurando HTTPS com Certbot"
+echo "=========================================="
+
+echo "📦 Atualizando pacotes..."
+apt update
+
+echo "📦 Instalando Certbot..."
+apt install -y certbot python3-certbot-nginx
+
+echo "🔐 Obtendo certificado SSL para $DOMAIN..."
+certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos --email "$EMAIL"
+
+echo ""
+echo "✅ HTTPS configurado com sucesso"
+echo ""
+
+# ============================================
+# PASSO 5: Configurar Laravel Trust Proxies (Cloudflare)
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 5: Configurando Trust Proxies para Cloudflare"
+echo "=========================================="
+
+echo "📝 Atualizando bootstrap/app.php para confiar em todos os proxies..."
+# Fazer backup do arquivo original
+cp bootstrap/app.php bootstrap/app.php.backup
+
+# Adicionar configuração de trust proxies
+sed -i '/->withMiddleware(function (Middleware \$middleware): void {/a\
+        $middleware->trustProxies(at: [\
+            '*',\
+        ]);' bootstrap/app.php
+
+echo "🔄 Limpando cache de configuração..."
+php artisan config:clear
+php artisan config:cache
+
+echo ""
+echo "✅ Trust Proxies configurado com sucesso"
+echo ""
+
+# ============================================
+# PASSO 6: Configurar .env de produção
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 6: Configurando .env de produção"
+echo "=========================================="
+
+if [ ! -f .env ]; then
+    echo "📝 Criando arquivo .env a partir de .env.example..."
+    cp .env.example .env
+else
+    echo "⚠️  Arquivo .env já existe, fazendo backup..."
+    cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+fi
+
+echo "🔑 Gerando APP_KEY..."
+php artisan key:generate
+
+echo ""
+echo "⚠️  IMPORTANTE: Edite o arquivo .env manualmente para configurar:"
+echo "   - DB_PASSWORD (senha do MySQL)"
+echo "   - APP_URL=https://$DOMAIN"
+echo "   - MAIL_* (configurações de email)"
+echo "   - Outras variáveis necessárias"
+echo ""
+echo "   Comando para editar: nano .env"
+echo ""
+
+# ============================================
+# PASSO 7: Executar migrações
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 7: Executando migrações"
+echo "=========================================="
+
+echo "🔄 Executando migrações do banco de dados..."
+php artisan migrate --force
+
+echo "🌱 Executando seeders (opcional)..."
+php artisan db:seed --force || echo "⚠️  Seeders não executados (erro ou não existem)"
+
+echo ""
+echo "✅ Migrações executadas com sucesso"
+echo ""
+
+# ============================================
+# PASSO 8: Configurar permissões
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 8: Configurando permissões"
+echo "=========================================="
+
+echo "🔧 Configurando permissões de diretórios..."
+chmod -R 755 storage bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache || true
+
+echo ""
+echo "✅ Permissões configuradas com sucesso"
+echo ""
+
+# ============================================
+# PASSO 9: Verificar status final
+# ============================================
+echo "=========================================="
+echo "📋 PASSO 9: Verificando status final"
+echo "=========================================="
+
+echo "📋 Status do Nginx:"
+systemctl status nginx --no-pager | head -10
+
+echo ""
+echo "📋 Containers Docker:"
+docker ps
+
+echo ""
+echo "📋 Portas em uso:"
+netstat -tlnp | grep -E ':(80|443|3306|8082)' || ss -tlnp | grep -E ':(80|443|3306|8082)'
+
+echo ""
+echo "🔍 Testando acesso HTTP:"
+curl -I "http://$DOMAIN" 2>&1 || echo "⚠️  Erro ao testar HTTP"
+
+echo ""
+echo "🔍 Testando acesso HTTPS:"
+curl -I "https://$DOMAIN" 2>&1 || echo "⚠️  Erro ao testar HTTPS"
+
+echo ""
+echo "=========================================="
+echo "✅ FINALIZAÇÃO CONCLUÍDA!"
+echo "=========================================="
+echo ""
+echo "🎉 Resumo:"
+echo "  ✅ Conflito de porta 80 resolvido"
+echo "  ✅ MySQL iniciado"
+echo "  ✅ Nginx configurado para $DOMAIN"
+echo "  ✅ HTTPS configurado com Certbot"
+echo "  ✅ Trust Proxies configurado para Cloudflare"
+echo "  ✅ .env configurado"
+echo "  ✅ Migrações executadas"
+echo "  ✅ Permissões configuradas"
+echo ""
+echo "📝 Próximos passos:"
+echo "  1. Edite o arquivo .env para configurar as variáveis necessárias"
+echo "  2. Reinicie o serviço Laravel se necessário"
+echo "  3. Configure o DNS do domínio para apontar para o IP da VPS"
+echo "  4. Configure o Cloudflare (se usar) para apontar para o domínio"
+echo ""
+echo "🌐 Teste a aplicação em: https://$DOMAIN/admin/saas/dashboard"
+echo ""

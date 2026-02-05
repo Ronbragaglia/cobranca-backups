@@ -18,7 +18,7 @@ RUN apk update && apk add \
     npm \
     dcron \
     mariadb-client \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip redis
 
 # Clear cache
 RUN rm -rf /var/cache/apk/*

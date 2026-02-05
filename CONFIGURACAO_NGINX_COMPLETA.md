@@ -1,0 +1,168 @@
+# CONFIGURAÇÃO COMPLETA DO NGINX
+
+## 📝 COPIAR E COLAR ESTE CONTEÚDO NO ARQUIVO
+
+Execute este comando para editar o arquivo:
+
+```bash
+nano /etc/nginx/sites-available/cobranca-api
+```
+
+Apague todo o conteúdo atual e cole este:
+
+```nginx
+# Rate limiting
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.cobrancaauto.com.br;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.cobrancaauto.com.br;
+
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/api.cobrancaauto.com.br/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.cobrancaauto.com.br/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Logging
+    access_log /var/log/nginx/cobranca-api-access.log;
+    error_log /var/log/nginx/cobranca-api-error.log;
+
+    # Client body size limit
+    client_max_body_size 20M;
+
+    # Root directory
+    root /var/www/cobranca-api/public;
+    index index.php index.html;
+
+    # Health check endpoint
+    location /health {
+        access_log off;
+        try_files $uri /index.php?$query_string;
+    }
+
+    # PHP files - Conectar ao PHP-FPM do container Docker na porta 9000
+    location ~ \.php$ {
+        try_files $uri =404;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+
+        # Conectar ao PHP-FPM do container Docker
+        fastcgi_pass 127.0.0.1:9000;
+
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+
+        # Timeout
+        fastcgi_read_timeout 300;
+        fastcgi_send_timeout 300;
+        fastcgi_connect_timeout 60;
+
+        # Buffers
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 256 16k;
+        fastcgi_busy_buffers_size 256k;
+    }
+
+    # Static files
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+
+    # Main location
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+        gzip_static on;
+    }
+
+    # Negar acesso a arquivos ocultos
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+}
+```
+
+**IMPORTANTE:** Não coloque ```nginx no início do arquivo!
+
+## ✅ SALVAR E SAIR
+
+- Pressione `Ctrl+O` (letra O)
+- Pressione `Enter`
+- Pressione `Ctrl+X`
+
+## 🧪 TESTAR CONFIGURAÇÃO
+
+```bash
+nginx -t
+```
+
+**Deveria mostrar:**
+```
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+```
+
+## 🔄 RECARREGAR NGINX
+
+```bash
+systemctl reload nginx
+```
+
+## 🔍 VERIFICAR STATUS
+
+```bash
+systemctl status nginx
+```
+
+**Deveria mostrar:**
+```
+Active: active (running)
+```
+
+---
+
+## 🚀 COMANDOS COMPLETOS (COPIAR E COLAR)
+
+```bash
+# 1. Editar arquivo
+nano /etc/nginx/sites-available/cobranca-api
+
+# 2. Apagar todo o conteúdo e colar a configuração completa acima
+# NÃO coloque ```nginx no início!
+
+# 3. Salvar: Ctrl+O, Enter, Ctrl+X
+
+# 4. Testar configuração
+nginx -t
+
+# 5. Recarregar Nginx
+systemctl reload nginx
+
+# 6. Verificar status
+systemctl status nginx
+```
+
+---
+
+**ÚLTIMA ATUALIZAÇÃO:** 2026-02-04  
+**VERSÃO:** 1.0  
+**STATUS:** PRONTO PARA EXECUÇÃO
